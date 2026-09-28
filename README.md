@@ -11,6 +11,9 @@ A local, interactive workspace for studying credit card fraud. Compare Logistic 
 - **Model lab:** four comparable pipelines, confusion matrices, precision–recall curves, validation threshold tradeoffs, PCA variance, and feature coefficients.
 - **Evaluation choices:** stratified random or chronological holdout, with F1, recall-focused F2, or a minimum validation recall target.
 - **Transaction review:** model selection, amount and decision filters, sorting, pagination, per-record inspection, and full or filtered CSV exports.
+- **Explain each prediction:** exact feature contributions that add up to the transaction score, including the baseline and any imputed fields.
+- **Find transaction IDs:** literal, case-insensitive metadata search and configurable metadata columns. Leading zeros and text values such as `NA` stay intact.
+- **Share results:** download a readable Markdown experiment report with measured results, settings, split counts and limitations.
 - **Reproducible experiments:** dataset fingerprints, settings, split counts, package versions, timing, and downloadable JSON manifests.
 - **CLI workflows:** training, persisted model bundles, and batch predictions without opening the dashboard.
 - **Regression checks:** data validation, preprocessing isolation, threshold selection, chronological boundaries, artifacts, CLI execution, and dashboard workflows.
@@ -82,6 +85,8 @@ Training requires at least **20 distinct rows of each class**. Exact duplicates 
 
 Batch scoring preserves row order, duplicates and extra columns. `Class` is ignored even if present. The output adds `Fraud_score`, `Predicted_class`, `Decision`, `Decision_threshold`, and `Scoring_model`. Input columns with those names are rejected to prevent accidental overwrites. Text metadata that could become spreadsheet formulas is escaped on CSV export; numeric values remain numeric.
 
+Extra metadata columns are read as text so identifiers such as `000123` and literal values such as `NA` are preserved. In Transaction review, search across metadata columns and choose which fields to display alongside each prediction. Open **Inspect a transaction** to see the exact score decomposition and download all 30 feature contributions. Contributions are measured relative to zero standardized inputs; they explain this model’s arithmetic, not causal evidence of fraud.
+
 V1–V28 are required: a card number and amount alone are not sufficient inputs.
 
 ## Evaluation methodology
@@ -119,6 +124,7 @@ Each run writes:
 
 - `metrics.csv`: all four models and their measured test results.
 - `run.json`: source, UTC timestamp, normalized-dataset SHA-256, split audit, seed, policy, package versions, warnings, timing and metrics.
+- `report.md`: readable experiment summary, selected-model outcomes, comparison table, provenance and limitations.
 - `models.joblib`: fitted pipelines, thresholds, validation operating points and held-out labels/scores.
 
 Score a batch using the validation-selected model:
@@ -150,6 +156,7 @@ See [REPORT.md](REPORT.md) for the academic write-up and screenshot checklist. T
 | `ui.py` | Shared styling and chart presentation |
 | `ml.py` | Validation, splits, training, thresholds, scoring, provenance |
 | `data_io.py` | Strict CSV loading and spreadsheet-safe exports |
+| `reporting.py` | Downloadable reports generated from measured experiment results |
 | `train.py` / `predict.py` | Command-line training and batch prediction |
 | `test_project.py` / `test_app.py` | Model, data, CLI and dashboard regression tests |
 | `Dockerfile` / `compose.yaml` | Local container setup |

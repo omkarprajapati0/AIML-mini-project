@@ -6,7 +6,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
     && useradd --create-home --uid 10001 appuser
-COPY app.py ui.py ml.py data_io.py train.py predict.py ./
+COPY app.py ui.py ml.py data_io.py reporting.py train.py predict.py ./
 COPY .streamlit ./.streamlit
 RUN mkdir -p data outputs && chown -R appuser:appuser /app
 USER appuser

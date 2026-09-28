@@ -265,6 +265,33 @@ def predict(result, name, df):
     return output
 
 
+def explain_prediction(result, name, row):
+    """Exact additive margin contributions relative to standardized zero inputs."""
+    if name not in result['models']:
+        raise ValueError('Unknown model: ' + str(name))
+    if len(row) != 1:
+        raise ValueError('Select exactly one transaction to explain.')
+    x = validate(row, labelled=False)
+    model = result['models'][name]['pipeline']
+    imputed = model.named_steps['imputer'].transform(x)
+    standardized = model.named_steps['scale'].transform(imputed)[0]
+    weights = feature_weights(result, name).set_index('Feature').loc[FEATURES, 'Weight'].to_numpy()
+    baseline = float(model.named_steps['classifier'].intercept_[0])
+    if 'pca' in model.named_steps:
+        baseline -= float(model.named_steps['pca'].mean_ @ weights)
+    contributions = standardized * weights
+    score = baseline + float(contributions.sum())
+    if not np.isfinite(score):
+        raise ValueError('Cannot explain a non-finite model score.')
+    table = pd.DataFrame({
+        'Feature': FEATURES, 'Input value': x.iloc[0].to_numpy(),
+        'Value used': imputed[0], 'Imputed': x.iloc[0].isna().to_numpy(),
+        'Contribution': contributions,
+    }).sort_values('Contribution', key=lambda values: values.abs(), ascending=False)
+    return {'baseline': baseline, 'score': score,
+            'threshold': result['models'][name]['threshold'], 'contributions': table}
+
+
 def run_metadata(result, source='unspecified'):
     """JSON-compatible provenance and metrics without transaction records."""
     return {

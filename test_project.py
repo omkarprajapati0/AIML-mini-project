@@ -14,8 +14,9 @@ import pandas as pd
 from sklearn.metrics import fbeta_score, precision_score, recall_score
 
 from data_io import export_csv, read_csv
+from reporting import experiment_report
 from ml import (
-    FEATURES, dataset_fingerprint, demo_data, feature_weights, predict, run_metadata,
+    FEATURES, dataset_fingerprint, demo_data, explain_prediction, feature_weights, predict, run_metadata,
     select_threshold, split_data, threshold_curve, train, validate,
 )
 
@@ -93,8 +94,16 @@ class InputTests(unittest.TestCase):
         frame = pd.DataFrame({'ID': ['=1+1', ' @SUM(A1)', 'safe', '-formula'], 'Score': [-1., 2., 3., 4.]})
         exported = read_csv(export_csv(frame).encode())
         self.assertEqual(exported.ID.tolist(), ["'=1+1", "' @SUM(A1)", 'safe', "'-formula"])
-        np.testing.assert_array_equal(exported.Score, frame.Score)
+        np.testing.assert_array_equal(pd.to_numeric(exported.Score), frame.Score)
         self.assertEqual(frame.ID.iloc[0], '=1+1')
+
+    def test_csv_preserves_identifiers_and_literal_missing_value_names(self):
+        frame = read_csv(b'Time,Amount,TransactionID,Region\n0,2.50,0000123,NA\n1,,99999999999999999999999,NULL\n')
+        self.assertEqual(frame.TransactionID.tolist(), ['0000123', '99999999999999999999999'])
+        self.assertEqual(frame.Region.tolist(), ['NA', 'NULL'])
+        self.assertTrue(pd.isna(frame.Amount.iloc[1]))
+        again = read_csv(export_csv(frame).encode())
+        pd.testing.assert_frame_equal(frame, again)
 
 
 class SplitAndThresholdTests(unittest.TestCase):
@@ -219,6 +228,22 @@ class ModelTests(unittest.TestCase):
                 intercept -= pipeline.named_steps['pca'].mean_ @ weights
             np.testing.assert_allclose(scaled @ weights + intercept, pipeline.decision_function(x), atol=1e-10)
 
+    def test_transaction_explanations_reconstruct_scores_with_imputed_values(self):
+        row = self.df.head(1).assign(V3=np.nan, Amount=np.nan)
+        for name in self.result['models']:
+            explanation = explain_prediction(self.result, name, row)
+            scored = predict(self.result, name, row)
+            self.assertAlmostEqual(explanation['score'], scored.Fraud_score.iloc[0], places=10)
+            parts = explanation['contributions']
+            self.assertEqual(set(parts.loc[parts.Imputed, 'Feature']), {'V3', 'Amount'})
+            self.assertEqual(len(parts), len(FEATURES))
+            self.assertTrue(np.isfinite(parts['Value used']).all())
+
+    def test_transaction_explanations_require_one_row(self):
+        for row in [self.df.head(0), self.df.head(2)]:
+            with self.assertRaisesRegex(ValueError, 'exactly one'):
+                explain_prediction(self.result, self.result['best'], row)
+
     def test_manifest_serializes_and_fingerprint_tracks_data(self):
         manifest = json.loads(json.dumps(run_metadata(self.result), allow_nan=False))
         self.assertEqual(manifest['rows'], len(self.df))
@@ -227,6 +252,16 @@ class ModelTests(unittest.TestCase):
         changed = self.df.copy()
         changed.loc[0, 'Amount'] += 1
         self.assertNotEqual(dataset_fingerprint(changed), self.result['fingerprint'])
+
+    def test_report_contains_measured_results_and_escapes_source_markup(self):
+        report = experiment_report(self.result, '<script>[source](url)\nnext')
+        self.assertIn(self.result['best'], report)
+        self.assertIn(self.result['fingerprint'], report)
+        selected = self.result['metrics'].set_index('Model').loc[self.result['best']]
+        self.assertIn(f'{selected["Recall"]:.1%}', report)
+        self.assertNotIn('<script>', report)
+        self.assertNotIn('[source](url)', report)
+        self.assertIn('demonstration results', report)
 
     def test_artifact_roundtrip_predictions(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -261,6 +296,7 @@ class CommandLineTests(unittest.TestCase):
             self.assertEqual(subprocess.run(args, capture_output=True).returncode, 2)
             manifest = json.loads((out / 'run.json').read_text())
             self.assertEqual(manifest['rows'], 2000)
+            self.assertIn(manifest['recommended'], (out / 'report.md').read_text())
             scored = subprocess.run([sys.executable, str(ROOT / 'predict.py'), '--model', str(out / 'models.joblib'), '--csv', str(batch), '--output', str(predictions)], capture_output=True, text=True)
             self.assertEqual(scored.returncode, 0, scored.stderr)
             output = read_csv(predictions)

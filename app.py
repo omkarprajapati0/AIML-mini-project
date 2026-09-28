@@ -12,10 +12,11 @@ from sklearn.metrics import precision_recall_curve
 
 from data_io import export_csv, read_csv
 from ml import (
-    FEATURES, POLICIES, SPLITS, demo_data, feature_weights, predict,
+    FEATURES, POLICIES, SPLITS, PREDICTION_COLUMNS, demo_data, explain_prediction, feature_weights, predict,
     run_metadata, train, validate,
 )
 from ui import COLORS, callout, configure_page, empty_state, section, show_figure
+from reporting import experiment_report
 
 ROOT = Path(__file__).parent
 PAGES = ['Overview', 'Model lab', 'Transaction review', 'Project guide']
@@ -142,6 +143,8 @@ def model_lab(result, source):
         return
     config = result['config']
     callout(result['best'], f'Validation-selected model · {SPLITS[config["split"]]} split · {POLICIES[config["policy"]]} · {result["elapsed_seconds"]:.1f}s total')
+    if result['notes']:
+        st.warning('This experiment has training or sample-size warnings. Read the split audit before interpreting the results.')
     names = list(result['models'])
     selected = st.selectbox('Explore model', names, index=names.index(result['best']))
     entry = result['models'][selected]
@@ -157,9 +160,10 @@ def model_lab(result, source):
         st.markdown('#### Compare all four models')
         visible = ['Model', 'Validation AP', 'Average precision', 'Precision', 'Recall', 'F1', 'Flag rate', 'Components']
         st.dataframe(result['metrics'][visible].style.format({name: '{:.3f}' for name in visible[1:-1]}), hide_index=True, width='stretch')
-        a, b = st.columns(2)
+        a, b, c = st.columns(3)
         a.download_button('Export comparison CSV', export_csv(result['metrics']), 'model_metrics.csv', 'text/csv', width='stretch')
         b.download_button('Export experiment JSON', json.dumps(run_metadata(result, source), indent=2, allow_nan=False), 'experiment.json', 'application/json', width='stretch')
+        c.download_button('Download experiment report', experiment_report(result, source), 'fraudlens_report.md', 'text/markdown', width='stretch')
     left, right = st.columns(2)
     with left, st.container(border=True):
         st.markdown('#### Where the model gets it right')
@@ -258,6 +262,9 @@ def transaction_review(result, df):
         st.warning('Sample demonstration: these rows can overlap training data. Use unseen transactions for independent evaluation.')
     a, b, c, d = st.columns(4)
     flagged = scored.Predicted_class == 1
+    missing_cells = int(scored[FEATURES].isna().sum().sum())
+    if missing_cells:
+        st.info(f'{missing_cells:,} missing feature values were filled using training medians. Transaction explanations identify the imputed fields.')
     a.metric('Rows scored', f'{len(scored):,}')
     b.metric('Flagged for review', f'{flagged.sum():,}')
     c.metric('Flag rate', f'{flagged.mean():.1%}')
@@ -268,8 +275,16 @@ def transaction_review(result, df):
         choice = a.selectbox('Queue filter', ['All transactions', 'Flagged', 'Predicted genuine'])
         minimum = b.number_input('Minimum amount', min_value=0.0, value=0.0, step=10.0)
         order = c.selectbox('Sort by', ['Highest score', 'Largest amount', 'Original order'])
+        metadata = [column for column in scored if column not in FEATURES + PREDICTION_COLUMNS + ['Class']]
+        search = st.text_input('Search transaction metadata', placeholder='Search IDs or other metadata; literal text, case-insensitive') if metadata else ''
+        shown_metadata = st.multiselect('Metadata columns to display', metadata, default=metadata[:2]) if metadata else []
         positions = np.arange(len(scored))
         mask = np.ones(len(scored), dtype=bool)
+        if search:
+            matches = np.zeros(len(scored), dtype=bool)
+            for column in metadata:
+                matches |= scored[column].astype('string').str.contains(search, case=False, regex=False, na=False).to_numpy(dtype=bool)
+            mask &= matches
         if choice != 'All transactions':
             mask &= scored.Predicted_class.to_numpy() == (1 if choice == 'Flagged' else 0)
         if minimum > 0:
@@ -286,8 +301,11 @@ def transaction_review(result, df):
             pages = max(1, math.ceil(len(queue) / 100))
             page = int(st.number_input('Page', min_value=1, max_value=pages, value=1, step=1))
             start = (page - 1) * 100
-            visible = queue.iloc[start:start + 100][['Decision', 'Fraud_score', 'Amount', 'Time']].copy()
-            visible.insert(0, 'Input row', positions[start:start + 100] + 1)
+            visible = queue.iloc[start:start + 100][['Decision', 'Fraud_score', 'Amount', 'Time'] + shown_metadata].copy()
+            row_label = 'Input row'
+            while row_label in visible.columns:
+                row_label += ' (reference)'
+            visible.insert(0, row_label, positions[start:start + 100] + 1)
             st.dataframe(visible, hide_index=True, width='stretch',
                          column_config={'Fraud_score': st.column_config.NumberColumn('Fraud score', format='%.4f')})
             st.caption(f'{len(queue):,} matches · page {page} of {pages} · input rows are numbered from 1 after the CSV header.')
@@ -300,6 +318,23 @@ def transaction_review(result, df):
         row = int(st.number_input('Input row number', min_value=1, max_value=len(scored), value=1, step=1))
         record = scored.iloc[row - 1]
         st.write(f'**{record.Decision}** · score {record.Fraud_score:.4f} · threshold {record.Decision_threshold:.4f}')
+        explanation = explain_prediction(result, name, scored.iloc[[row - 1]][FEATURES])
+        contributions = explanation['contributions']
+        st.markdown('#### Why did this transaction receive this score?')
+        top = contributions.head(10).iloc[::-1]
+        fig, ax = plt.subplots(figsize=(9, 3.6))
+        ax.barh(top.Feature, top.Contribution, color=[COLORS[2] if value > 0 else COLORS[0] for value in top.Contribution])
+        ax.axvline(0, color='#9cabb5', lw=.8)
+        ax.set_xlabel('Contribution to this transaction’s fraud score')
+        show_figure(fig)
+        st.caption(f'Baseline {explanation["baseline"]:.4f} + all feature contributions {contributions.Contribution.sum():.4f} = score {explanation["score"]:.4f}. The chart shows the 10 largest absolute contributions.')
+        st.caption('Orange pushes the score toward fraud; green pushes it toward genuine. Contributions are relative to zero standardized inputs. This explains the model calculation, not the cause of fraud.')
+        st.dataframe(contributions, hide_index=True, width='stretch', column_config={
+            'Contribution': st.column_config.NumberColumn(format='%.4f'),
+            'Imputed': st.column_config.CheckboxColumn('Filled from training median'),
+        })
+        st.download_button('Export transaction explanation', export_csv(contributions), f'transaction_{row}_explanation.csv', 'text/csv')
+        st.markdown('#### Original record and prediction')
         st.dataframe(record.rename('Value').astype(str).to_frame(), width='stretch')
 
 

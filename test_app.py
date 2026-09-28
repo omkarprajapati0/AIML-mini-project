@@ -56,6 +56,21 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(result['config']['policy'], 'recall')
         self.assertGreaterEqual(result['models'][result['best']]['validation_metrics']['Recall'], .9)
 
+    def test_metadata_search_is_literal_and_preserves_user_row_column(self):
+        self.train()
+        self.widget('radio', 'Workspace').set_value('Transaction review').run()
+        self.widget('checkbox', 'Try 20 sample transactions').check().run()
+        cached = self.app.session_state['scored_batch']
+        cached['frame']['Input row'] = ['0001[abc]'] + ['other'] * 19
+        self.app.session_state['scored_batch'] = cached
+        self.app.run()
+        self.widget('text_input', 'Search transaction metadata').set_value('[ABC]').run()
+        self.assert_clean()
+        queue = self.app.dataframe[0].value
+        self.assertEqual(len(queue), 1)
+        self.assertEqual(queue['Input row'].iloc[0], '0001[abc]')
+        self.assertEqual(queue['Input row (reference)'].iloc[0], 1)
+
     def test_changing_dataset_clears_stale_results(self):
         self.train()
         self.widget('selectbox', 'Dataset source').set_value('Upload dataset').run()

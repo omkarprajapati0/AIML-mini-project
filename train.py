@@ -7,6 +7,7 @@ import joblib
 
 from data_io import export_csv, read_csv
 from ml import POLICIES, SPLITS, demo_data, run_metadata, train
+from reporting import experiment_report
 
 
 def main(argv=None):
@@ -19,7 +20,7 @@ def main(argv=None):
     parser.add_argument('--retained', type=float, default=.95, help='PCA variance fraction between 0 and 1.')
     parser.add_argument('--overwrite', action='store_true', help='Replace an existing experiment in the output folder.')
     args = parser.parse_args(argv)
-    paths = [args.output / name for name in ('metrics.csv', 'models.joblib', 'run.json')]
+    paths = [args.output / name for name in ('metrics.csv', 'models.joblib', 'run.json', 'report.md')]
     if not args.overwrite and any(path.exists() for path in paths):
         parser.error('Output already contains an experiment. Choose a new folder or pass --overwrite.')
     try:
@@ -30,6 +31,7 @@ def main(argv=None):
         (args.output / 'metrics.csv').write_text(export_csv(result['metrics']), encoding='utf-8')
         joblib.dump(result, args.output / 'models.joblib', compress=3)
         (args.output / 'run.json').write_text(json.dumps(manifest, indent=2, allow_nan=False) + '\n', encoding='utf-8')
+        (args.output / 'report.md').write_text(experiment_report(result, manifest['source']), encoding='utf-8')
     except (ValueError, OSError, UnicodeError, MemoryError) as exc:
         parser.error(str(exc))
     print(f'Recommended: {result["best"]}')

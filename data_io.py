@@ -30,7 +30,11 @@ def read_csv(source):
         for line, row in enumerate(reader, start=2):
             if row and len(row) != len(header):
                 raise ValueError(f'CSV record {line} has {len(row)} fields; expected {len(header)}.')
-        return pd.read_csv(io.StringIO(text), header=0, names=names)
+        numeric = {'Time', 'Amount', 'Class', 'Fraud_score', 'Predicted_class', 'Decision_threshold'}
+        numeric.update(f'V{i}' for i in range(1, 29))
+        # Identifiers such as 000123 and literal NA must survive ingestion intact.
+        converters = {name: str for name in names if name not in numeric}
+        return pd.read_csv(io.StringIO(text), header=0, names=names, converters=converters)
     except (csv.Error, pd.errors.ParserError) as exc:
         raise ValueError(f'Could not parse the CSV: {exc}') from exc
 
