@@ -21,7 +21,7 @@ Python, Streamlit, Pandas, NumPy, Scikit-learn, Matplotlib, and the Kaggle Credi
 Identify potentially fraudulent transactions while measuring the tradeoff between missed fraud and false alarms. Fraud is the positive class. The project uses supervised classification because labelled examples are available.
 
 ## Algorithms
-Logistic Regression and Linear SVM learn linear decision functions. Balanced class weights account for class imbalance during fitting. PCA compresses standardized features while retaining a configured share of variance. The four compared pipelines are Logistic Regression, Linear SVM, PCA + Logistic Regression, and PCA + Linear SVM. Kaggle V1–V28 are already anonymized PCA components, so additional PCA is evaluated rather than assumed beneficial.
+Logistic Regression and Linear SVM learn linear decision functions. Balanced class weights account for class imbalance during fitting. PCA compresses standardized features while retaining a configured share of variance. The four compared pipelines are Logistic Regression, Linear SVM, PCA + Logistic Regression, and PCA + Linear SVM. An optional fifth pipeline uses histogram Gradient Boosting to model nonlinear interactions, with balanced class weights and a fixed configuration. Kaggle V1–V28 are already anonymized PCA components, so additional PCA is evaluated rather than assumed beneficial.
 
 ## Implementation
 1. Read a strict UTF-8 CSV and validate required numeric fields and binary target labels.
@@ -29,7 +29,7 @@ Logistic Regression and Linear SVM learn linear decision functions. Balanced cla
 3. Create disjoint 60/20/20 partitions using stratification or chronological ordering. Chronological mode keeps equal timestamps in one partition and requires both classes in each period.
 4. Fit imputation, scaling, optional PCA and a class-weighted classifier only on training rows.
 5. Select each threshold using validation F1, F2, or maximum precision subject to a validation recall target. Select the recommended model using validation average precision.
-6. Report performance on held-out test rows using the frozen thresholds.
+6. Report performance on held-out test rows using the frozen thresholds, including approximate 95% Wilson intervals for precision, recall and review rate. These assume independent transactions and do not account for model-selection uncertainty or future drift.
 7. Inspect confusion matrices, precision–recall curves, validation threshold curves, PCA variance and standardized feature weights.
 8. Score unseen transactions, preserve their metadata, filter the queue, and export decisions with model and threshold information.
 9. Export a run manifest with a dataset fingerprint, split counts, settings, package versions and metrics.
@@ -67,7 +67,7 @@ Run `python -m unittest discover -v` and `python -m pip check`. Tests cover data
 6. Batch review queue and export options.
 
 ## Ethics and limitations
-False positives can inconvenience genuine customers; false negatives can allow fraud. Human review and secure data handling are necessary. Model scores are uncalibrated margins, not fraud probabilities. Feature coefficients describe model associations and do not establish causes. Anonymized features limit demographic fairness analysis. A chronological holdout better separates earlier and later periods but still requires future-period validation and drift monitoring. Small fraud counts produce unstable estimates. The application does not make automatic payment decisions.
+False positives can inconvenience genuine customers; false negatives can allow fraud. Human review and secure data handling are necessary. Model scores are uncalibrated margins, not fraud probabilities. Exact additive feature contributions apply only to the linear/PCA models; they are not presented for nonlinear boosted trees. Feature coefficients describe model associations and do not establish causes. Anonymized features limit demographic fairness analysis. A chronological holdout better separates earlier and later periods but still requires future-period validation and drift monitoring. Small fraud counts produce unstable estimates. The application does not make automatic payment decisions.
 
 ## Conclusion template — complete after the real run
 On the held-out ________ split, the validation-selected model ________ achieved precision ________, recall ________, F1 ________, and average precision ________. The decision policy ________ produced ________ false alarms and ________ missed fraud transactions. Additional PCA ________. These results demonstrate the effect of dimensionality reduction and threshold selection on measured fraud detection and review workload.

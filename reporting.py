@@ -1,7 +1,7 @@
 """Human-readable experiment reports generated only from measured run results."""
 import re
 
-from ml import POLICIES, SPLITS
+from ml import POLICIES, SPLITS, operating_intervals
 
 
 def _cell(value):
@@ -27,6 +27,7 @@ def experiment_report(result, source):
         f'- Decision policy: {POLICIES[config["policy"]]}',
         f'- Validated rows: {result["rows"]:,}',
         f'- Duplicate rows removed: {result["duplicates_removed"]:,}',
+        f'- Gradient Boosting included: {config.get("include_nonlinear", False)}',
     ]
     if config['policy'] == 'recall':
         lines.append(f'- Validation recall target: {config["target_recall"]:.0%} (not a test or future-data guarantee)')
@@ -55,7 +56,16 @@ def experiment_report(result, source):
     lines += ['- Decision scores are uncalibrated margins, not probabilities.',
               '- Thresholds and preprocessing use training/validation data only; no post-evaluation refit occurs.',
               '- Repeated configuration selection from test results biases reported performance.',
-              '- Feature contributions explain the linear calculation, not the cause of fraud.',
+              '- Linear-model feature contributions explain the calculation, not the cause of fraud; these explanations are unavailable for boosted trees.',
               '- Results from one holdout do not establish production readiness or demographic fairness.',
               '- Predictions support human review and never automatically block payments.', '']
-    return '\n'.join(lines)
+    lines += ['## Uncertainty of selected-model test rates', '',
+              'Approximate 95% Wilson intervals assume independent transactions and a fixed model. '
+              'They exclude uncertainty from model selection, repeated tuning and data drift.', '',
+              '| Rate | Estimate | Lower 95% | Upper 95% | Denominator |',
+              '| --- | ---: | ---: | ---: | ---: |']
+    for interval in operating_intervals(entry['confusion']):
+        values = ['Not estimable' if interval[key] is None else f'{interval[key]:.1%}'
+                  for key in ['Estimate', 'Lower 95%', 'Upper 95%']]
+        lines.append('| ' + interval['Metric'] + ' | ' + ' | '.join(values) + f' | {interval["Denominator"]} |')
+    return '\n'.join(lines) + '\n'

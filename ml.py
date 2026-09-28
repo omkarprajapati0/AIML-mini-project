@@ -10,6 +10,7 @@ import pandas as pd
 import sklearn
 from sklearn.datasets import make_classification
 from sklearn.decomposition import PCA
+from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
@@ -157,7 +158,29 @@ def evaluate(labels, scores, threshold):
     }, confusion
 
 
-def train(df, retained=.95, split='stratified', policy='f1', target_recall=.8, progress=None):
+def operating_intervals(confusion):
+    """Approximate 95% Wilson intervals for rates conditional on a frozen model."""
+    tn, fp, fn, tp = np.asarray(confusion).ravel()
+    rows = []
+    z = 1.959963984540054
+    for metric, successes, total in (
+        ('Precision', tp, tp + fp), ('Recall', tp, tp + fn),
+        ('Review rate', tp + fp, tn + fp + fn + tp),
+    ):
+        if total == 0:
+            estimate = lower = upper = None
+        else:
+            estimate = float(successes / total)
+            denominator = 1 + z * z / total
+            center = (estimate + z * z / (2 * total)) / denominator
+            radius = z * np.sqrt(estimate * (1 - estimate) / total + z * z / (4 * total * total)) / denominator
+            lower, upper = max(0., float(center - radius)), min(1., float(center + radius))
+        rows.append({'Metric': metric, 'Estimate': estimate, 'Lower 95%': lower,
+                     'Upper 95%': upper, 'Denominator': int(total)})
+    return rows
+
+
+def train(df, retained=.95, split='stratified', policy='f1', target_recall=.8, progress=None, include_nonlinear=False):
     """Select models and thresholds on validation only; preserve test data for reporting."""
     if isinstance(retained, bool) or not 0 < retained < 1:
         raise ValueError('PCA retained variance must be between 0 and 1, exclusive.')
@@ -173,42 +196,49 @@ def train(df, retained=.95, split='stratified', policy='f1', target_recall=.8, p
     x_val, y_val = validation[FEATURES], validation.Class
     x_test, y_test = test[FEATURES], test.Class
     models, rows, notes = {}, [], []
+    candidates = []
     for use_pca in (False, True):
         for kind in ('Logistic Regression', 'Linear SVM'):
-            name = ('PCA + ' if use_pca else '') + kind
-            if progress:
-                progress(len(models), 4, name)
             classifier = (
                 LogisticRegression(class_weight='balanced', max_iter=2500, random_state=SEED)
                 if kind == 'Logistic Regression' else
                 LinearSVC(class_weight='balanced', dual=False, max_iter=10000, random_state=SEED)
             )
-            steps = [('imputer', SimpleImputer(strategy='median')), ('scale', StandardScaler())]
-            if use_pca:
-                steps.append(('pca', PCA(n_components=retained, svd_solver='full')))
-            model = Pipeline(steps + [('classifier', classifier)])
-            fit_started = perf_counter()
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter('always', ConvergenceWarning)
-                model.fit(x_train, y_train)
-            notes.extend(f'{name}: {warning.message}' for warning in caught)
-            fit_seconds = perf_counter() - fit_started
-            val_scores = model.decision_function(x_val)
-            curve = threshold_curve(y_val, val_scores)
-            threshold = select_threshold(curve, policy, target_recall)
-            scores = model.decision_function(x_test)
-            metrics, confusion = evaluate(y_test, scores, threshold)
-            validation_metrics, _ = evaluate(y_val, val_scores, threshold)
-            rows.append({
-                'Model': name, 'Validation AP': validation_metrics['Average precision'], **metrics,
-                'Threshold': threshold,
-                'Components': int(model.named_steps['pca'].n_components_) if use_pca else len(FEATURES),
-                'Fit seconds': fit_seconds,
-            })
-            models[name] = {
-                'pipeline': model, 'threshold': threshold, 'scores': scores, 'confusion': confusion,
-                'validation_curve': curve, 'validation_metrics': validation_metrics,
-            }
+            candidates.append((('PCA + ' if use_pca else '') + kind, use_pca, classifier))
+    if include_nonlinear:
+        candidates.append(('Gradient Boosting', False, HistGradientBoostingClassifier(
+            class_weight='balanced', max_iter=150, max_leaf_nodes=15,
+            learning_rate=.07, l2_regularization=1., early_stopping=False, random_state=SEED,
+        )))
+    for name, use_pca, classifier in candidates:
+        if progress:
+            progress(len(models), len(candidates), name)
+        steps = [('imputer', SimpleImputer(strategy='median')), ('scale', StandardScaler())]
+        if use_pca:
+            steps.append(('pca', PCA(n_components=retained, svd_solver='full')))
+        model = Pipeline(steps + [('classifier', classifier)])
+        fit_started = perf_counter()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always', ConvergenceWarning)
+            model.fit(x_train, y_train)
+        notes.extend(f'{name}: {warning.message}' for warning in caught)
+        fit_seconds = perf_counter() - fit_started
+        val_scores = model.decision_function(x_val)
+        curve = threshold_curve(y_val, val_scores)
+        threshold = select_threshold(curve, policy, target_recall)
+        scores = model.decision_function(x_test)
+        metrics, confusion = evaluate(y_test, scores, threshold)
+        validation_metrics, _ = evaluate(y_val, val_scores, threshold)
+        rows.append({
+            'Model': name, 'Validation AP': validation_metrics['Average precision'], **metrics,
+            'Threshold': threshold,
+            'Components': int(model.named_steps['pca'].n_components_) if use_pca else len(FEATURES),
+            'Fit seconds': fit_seconds,
+        })
+        models[name] = {
+            'pipeline': model, 'threshold': threshold, 'scores': scores, 'confusion': confusion,
+            'validation_curve': curve, 'validation_metrics': validation_metrics,
+        }
     table = pd.DataFrame(rows)
     summary = []
     for name, partition in zip(('Train', 'Validation', 'Test'), (training, validation, test)):
@@ -225,7 +255,7 @@ def train(df, retained=.95, split='stratified', policy='f1', target_recall=.8, p
         'best': str(table.loc[table['Validation AP'].idxmax(), 'Model']), 'y_test': y_test,
         'notes': list(dict.fromkeys(notes)), 'sizes': [len(part) for part in (training, validation, test)],
         'rows': len(df), 'duplicates_removed': raw_rows - len(df), 'split_summary': summary,
-        'config': {'retained': retained, 'split': split, 'policy': policy, 'target_recall': target_recall, 'seed': SEED},
+        'config': {'retained': retained, 'split': split, 'policy': policy, 'target_recall': target_recall, 'seed': SEED, 'include_nonlinear': include_nonlinear},
         'fingerprint': dataset_fingerprint(df), 'created_at': datetime.now(timezone.utc).isoformat(),
         'elapsed_seconds': perf_counter() - started,
         'versions': {'python': platform.python_version(), 'numpy': np.__version__,
@@ -236,6 +266,8 @@ def train(df, retained=.95, split='stratified', policy='f1', target_recall=.8, p
 def feature_weights(result, name):
     """Linear coefficients in standardized original-feature coordinates, even after PCA."""
     model = result['models'][name]['pipeline']
+    if not hasattr(model.named_steps['classifier'], 'coef_'):
+        raise ValueError('Exact linear contributions are unavailable for Gradient Boosting.')
     coefficients = model.named_steps['classifier'].coef_[0]
     if 'pca' in model.named_steps:
         coefficients = model.named_steps['pca'].components_.T @ coefficients
@@ -302,4 +334,5 @@ def run_metadata(result, source='unspecified'):
         'split_sizes': result['sizes'], 'splits': result['split_summary'],
         'elapsed_seconds': result['elapsed_seconds'], 'versions': result['versions'],
         'warnings': result['notes'], 'metrics': result['metrics'].to_dict(orient='records'),
+        'test_rate_intervals': {name: operating_intervals(entry['confusion']) for name, entry in result['models'].items()},
     }

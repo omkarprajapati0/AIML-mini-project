@@ -13,7 +13,7 @@ from sklearn.metrics import precision_recall_curve
 from data_io import export_csv, read_csv
 from ml import (
     FEATURES, POLICIES, SPLITS, PREDICTION_COLUMNS, demo_data, explain_prediction, feature_weights, predict,
-    run_metadata, train, validate,
+    operating_intervals, run_metadata, train, validate,
 )
 from ui import COLORS, callout, configure_page, empty_state, section, show_figure
 from reporting import experiment_report
@@ -38,13 +38,14 @@ def sidebar():
             policy = st.selectbox('Decision policy', list(POLICIES), format_func=POLICIES.get)
             target = st.slider('Recall target', .50, 1.0, .80, .05,
                                help='Used by Minimum recall target. This is a validation target, not a guarantee on future data.')
+            include_nonlinear = st.checkbox('Include Gradient Boosting', value=True, help='Adds a nonlinear tree ensemble to the four linear/PCA baselines. It is evaluated on the same held-out split.')
             retained = st.slider('PCA variance retained', .80, .99, .95, .01)
             run = st.form_submit_button('Train all models', type='primary', width='stretch')
-        st.caption('Four models · 60 / 20 / 20 split\n\nThresholds chosen on validation data.')
+        st.caption('Four baselines + optional boosted trees · 60 / 20 / 20 split\n\nThresholds chosen on validation data.')
         st.divider()
         st.markdown('[Get the Kaggle dataset ↗](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud)')
         st.caption('Experiment 10 · TE IT\n\nOmkar M Prajapati · Roll 61')
-    config = {'retained': retained, 'split': split, 'policy': policy, 'target_recall': target}
+    config = {'retained': retained, 'split': split, 'policy': policy, 'target_recall': target, 'include_nonlinear': include_nonlinear}
     return source, upload, config, run
 
 
@@ -139,7 +140,7 @@ def overview(dataset):
 def model_lab(result, source):
     section('Experiment results', 'Evidence before decisions', 'Recommendation uses validation average precision. Performance below is measured on the held-out test split.')
     if result is None:
-        empty_state('Your first experiment starts here', 'Choose a split and decision policy in the sidebar, then select Train all models. All four pipelines use the same partitions.')
+        empty_state('Your first experiment starts here', 'Choose a split and decision policy in the sidebar, then select Train all models. Every pipeline uses the same partitions.')
         return
     config = result['config']
     callout(result['best'], f'Validation-selected model · {SPLITS[config["split"]]} split · {POLICIES[config["policy"]]} · {result["elapsed_seconds"]:.1f}s total')
@@ -156,8 +157,13 @@ def model_lab(result, source):
         ['Precision–recall ranking summary.', 'Share of known fraud caught.', 'Share of alerts that are actual fraud.', 'Share of test transactions flagged.']):
         column.metric(title, f'{value:.1%}', help=help_text)
     st.write('')
+    with st.expander('How certain are these rates?'):
+        st.dataframe(pd.DataFrame(operating_intervals(entry['confusion'])).style.format(
+            {'Estimate': '{:.1%}', 'Lower 95%': '{:.1%}', 'Upper 95%': '{:.1%}'}, na_rep='Not estimable'),
+            hide_index=True, width='stretch')
+        st.caption('Approximate 95% Wilson intervals on held-out counts, assuming independent transactions and a fixed model. They do not account for model selection, repeated tuning, correlated transactions, or future data drift. Precision is not estimable when no rows are flagged.')
     with st.container(border=True):
-        st.markdown('#### Compare all four models')
+        st.markdown('#### Compare all trained models')
         visible = ['Model', 'Validation AP', 'Average precision', 'Precision', 'Recall', 'F1', 'Flag rate', 'Components']
         st.dataframe(result['metrics'][visible].style.format({name: '{:.3f}' for name in visible[1:-1]}), hide_index=True, width='stretch')
         a, b, c = st.columns(3)
@@ -209,13 +215,16 @@ def model_lab(result, source):
         st.info('Choose your policy before evaluating test results. A validation recall target does not guarantee the same recall on unseen transactions.')
     left, right = st.columns(2)
     with left, st.expander('What influences the model?'):
-        weights = feature_weights(result, selected).head(10).iloc[::-1]
-        fig, ax = plt.subplots(figsize=(6, 3.8))
-        ax.barh(weights.Feature, weights.Weight, color=[COLORS[2] if value > 0 else COLORS[0] for value in weights.Weight])
-        ax.axvline(0, color='#9cabb5', lw=.8)
-        ax.set_xlabel('Coefficient per standardized feature unit')
-        show_figure(fig)
-        st.caption('Positive weights increase the fraud margin; negative weights decrease it. PCA weights are mapped back to the standardized input features. These are model associations, not causal explanations.')
+        if hasattr(entry['pipeline'].named_steps['classifier'], 'coef_'):
+            weights = feature_weights(result, selected).head(10).iloc[::-1]
+            fig, ax = plt.subplots(figsize=(6, 3.8))
+            ax.barh(weights.Feature, weights.Weight, color=[COLORS[2] if value > 0 else COLORS[0] for value in weights.Weight])
+            ax.axvline(0, color='#9cabb5', lw=.8)
+            ax.set_xlabel('Coefficient per standardized feature unit')
+            show_figure(fig)
+            st.caption('Positive weights increase the fraud margin; negative weights decrease it. PCA weights are mapped back to the standardized input features. These are model associations, not causal explanations.')
+        else:
+            st.info('Gradient Boosting captures nonlinear interactions. Linear coefficient explanations do not apply to this model.')
     with right, st.expander('What did PCA retain?'):
         pca = result['models']['PCA + Logistic Regression']['pipeline'].named_steps['pca']
         st.write(f'**{pca.n_components_} components** retain **{pca.explained_variance_ratio_.sum():.1%}** of training variance.')
@@ -318,22 +327,25 @@ def transaction_review(result, df):
         row = int(st.number_input('Input row number', min_value=1, max_value=len(scored), value=1, step=1))
         record = scored.iloc[row - 1]
         st.write(f'**{record.Decision}** · score {record.Fraud_score:.4f} · threshold {record.Decision_threshold:.4f}')
-        explanation = explain_prediction(result, name, scored.iloc[[row - 1]][FEATURES])
-        contributions = explanation['contributions']
-        st.markdown('#### Why did this transaction receive this score?')
-        top = contributions.head(10).iloc[::-1]
-        fig, ax = plt.subplots(figsize=(9, 3.6))
-        ax.barh(top.Feature, top.Contribution, color=[COLORS[2] if value > 0 else COLORS[0] for value in top.Contribution])
-        ax.axvline(0, color='#9cabb5', lw=.8)
-        ax.set_xlabel('Contribution to this transaction’s fraud score')
-        show_figure(fig)
-        st.caption(f'Baseline {explanation["baseline"]:.4f} + all feature contributions {contributions.Contribution.sum():.4f} = score {explanation["score"]:.4f}. The chart shows the 10 largest absolute contributions.')
-        st.caption('Orange pushes the score toward fraud; green pushes it toward genuine. Contributions are relative to zero standardized inputs. This explains the model calculation, not the cause of fraud.')
-        st.dataframe(contributions, hide_index=True, width='stretch', column_config={
-            'Contribution': st.column_config.NumberColumn(format='%.4f'),
-            'Imputed': st.column_config.CheckboxColumn('Filled from training median'),
-        })
-        st.download_button('Export transaction explanation', export_csv(contributions), f'transaction_{row}_explanation.csv', 'text/csv')
+        if hasattr(result['models'][name]['pipeline'].named_steps['classifier'], 'coef_'):
+            explanation = explain_prediction(result, name, scored.iloc[[row - 1]][FEATURES])
+            contributions = explanation['contributions']
+            st.markdown('#### Why did this transaction receive this score?')
+            top = contributions.head(10).iloc[::-1]
+            fig, ax = plt.subplots(figsize=(9, 3.6))
+            ax.barh(top.Feature, top.Contribution, color=[COLORS[2] if value > 0 else COLORS[0] for value in top.Contribution])
+            ax.axvline(0, color='#9cabb5', lw=.8)
+            ax.set_xlabel('Contribution to this transaction’s fraud score')
+            show_figure(fig)
+            st.caption(f'Baseline {explanation["baseline"]:.4f} + all feature contributions {contributions.Contribution.sum():.4f} = score {explanation["score"]:.4f}. The chart shows the 10 largest absolute contributions.')
+            st.caption('Orange pushes the score toward fraud; green pushes it toward genuine. Contributions are relative to zero standardized inputs. This explains the model calculation, not the cause of fraud.')
+            st.dataframe(contributions, hide_index=True, width='stretch', column_config={
+                'Contribution': st.column_config.NumberColumn(format='%.4f'),
+                'Imputed': st.column_config.CheckboxColumn('Filled from training median'),
+            })
+            st.download_button('Export transaction explanation', export_csv(contributions), f'transaction_{row}_explanation.csv', 'text/csv')
+        else:
+            st.info('Exact additive linear explanations are available for the Logistic Regression and SVM models. Gradient Boosting uses nonlinear trees, so this view reports its score and original inputs without linear attributions.')
         st.markdown('#### Original record and prediction')
         st.dataframe(record.rename('Value').astype(str).to_frame(), width='stretch')
 
@@ -343,7 +355,7 @@ def guide():
     for title, text in [
         ('01 / Prepare', 'Validate numeric fields and binary labels, reject conflicting labels, and remove exact duplicates before splitting.'),
         ('02 / Separate', 'Use a reproducible stratified split, or train on earlier transactions and evaluate later periods with a chronological split. Equal timestamps stay in one partition.'),
-        ('03 / Learn', 'Fit median imputation, scaling, optional PCA, and class-weighted Logistic Regression or Linear SVM on training rows only.'),
+        ('03 / Learn', 'Fit median imputation, scaling, optional PCA, and class-weighted Logistic Regression or Linear SVM on training rows only. Optional Gradient Boosting learns nonlinear interactions using the same partitions.'),
         ('04 / Choose', 'Select a decision threshold using validation F1, recall-focused F2, or the highest precision satisfying a validation recall target. Select the model by validation average precision.'),
         ('05 / Evaluate', 'Report held-out precision, recall, F1, average precision, ROC-AUC, and review rate. Export the settings, split audit, package versions and dataset fingerprint with the results.'),
         ('06 / Review', 'Score unseen batches with a frozen model and threshold, preserve transaction IDs, filter the review queue and export the decisions for human review.'),
@@ -372,7 +384,7 @@ def main():
     st.markdown('''<div class="hero"><span class="eyebrow">Fraud intelligence / Research workspace</span>
     <h1>Find the signal.<br>Make an informed decision.</h1>
     <p>Understand your transactions, compare the evidence, and bring suspicious activity into focus.</p>
-    <span class="tag">4 model pipelines</span><span class="tag">Validation-led decisions</span><span class="tag">Human review</span></div>''', unsafe_allow_html=True)
+    <span class="tag">Linear models + boosted trees</span><span class="tag">Validation-led decisions</span><span class="tag">Human review</span></div>''', unsafe_allow_html=True)
     try:
         dataset = load_dataset(source, upload)
     except (ValueError, OSError, UnicodeError) as exc:

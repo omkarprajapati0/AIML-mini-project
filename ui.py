@@ -4,7 +4,7 @@ from html import escape
 import matplotlib.pyplot as plt
 import streamlit as st
 
-COLORS = ['#008b75', '#4e75cd', '#dd8652', '#9c6cbb']
+COLORS = ['#008b75', '#4e75cd', '#dd8652', '#9c6cbb', '#bd536d']
 
 
 def configure_page():

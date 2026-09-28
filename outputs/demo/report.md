@@ -2,7 +2,7 @@
 
 **Source:** SYNTHETIC DEMO
 
-**Run time (UTC):** 2026-09-27T19:35:03.498125+00:00
+**Run time (UTC):** 2026-09-28T18:07:00.826634+00:00
 
 **Interpretation:** If the source is synthetic, these are demonstration results, not Kaggle or real-world performance.
 
@@ -14,6 +14,7 @@
 - Decision policy: Balanced F1
 - Validated rows: 6,000
 - Duplicate rows removed: 0
+- Gradient Boosting included: True
 
 ## Split audit
 
@@ -33,12 +34,13 @@ The recommendation uses validation average precision. All other metrics below us
 | Linear SVM | 0.7594 | 0.7668 | 0.9091 | 0.7317 | 0.8108 | 0.0275 |
 | PCA + Logistic Regression | 0.6718 | 0.6168 | 0.7576 | 0.6098 | 0.6757 | 0.0275 |
 | PCA + Linear SVM | 0.6704 | 0.6134 | 0.7586 | 0.5366 | 0.6286 | 0.0242 |
+| Gradient Boosting | 0.8141 | 0.7893 | 0.8611 | 0.7561 | 0.8052 | 0.0300 |
 
 ## Selected model
 
-**Linear SVM**, selected on validation data.
+**Gradient Boosting**, selected on validation data.
 
-The frozen threshold is **0.626243**. On the test split, this model achieved precision **90.9%**, recall **73.2%**, and average precision **0.7668**. It produced **3 false alarms** and **11 missed fraud transactions**.
+The frozen threshold is **-0.067223**. On the test split, this model achieved precision **86.1%**, recall **75.6%**, and average precision **0.7893**. It produced **5 false alarms** and **10 missed fraud transactions**.
 
 ## Reproducibility
 
@@ -48,10 +50,20 @@ python 3.9.6, numpy 1.26.4, pandas 2.3.3, scikit-learn 1.6.1
 
 ## Warnings and limitations
 
-- No training or small-partition warnings were recorded.
+- Gradient Boosting: Could not find the number of physical cores for the following reason: invalid literal for int() with base 10: '' Returning the number of logical cores instead. You can silence this warning by setting LOKY\_MAX\_CPU\_COUNT to the number of cores you want to use.
 - Decision scores are uncalibrated margins, not probabilities.
 - Thresholds and preprocessing use training/validation data only; no post-evaluation refit occurs.
 - Repeated configuration selection from test results biases reported performance.
-- Feature contributions explain the linear calculation, not the cause of fraud.
+- Linear-model feature contributions explain the calculation, not the cause of fraud; these explanations are unavailable for boosted trees.
 - Results from one holdout do not establish production readiness or demographic fairness.
 - Predictions support human review and never automatically block payments.
+
+## Uncertainty of selected-model test rates
+
+Approximate 95% Wilson intervals assume independent transactions and a fixed model. They exclude uncertainty from model selection, repeated tuning and data drift.
+
+| Rate | Estimate | Lower 95% | Upper 95% | Denominator |
+| --- | ---: | ---: | ---: | ---: |
+| Precision | 86.1% | 71.3% | 93.9% | 36 |
+| Recall | 75.6% | 60.7% | 86.2% | 41 |
+| Review rate | 3.0% | 2.2% | 4.1% | 1200 |

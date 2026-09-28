@@ -1,17 +1,18 @@
 {
   "artifact_version": 2,
   "source": "SYNTHETIC DEMO",
-  "created_at": "2026-09-27T19:35:03.498125+00:00",
+  "created_at": "2026-09-28T18:07:00.826634+00:00",
   "dataset_sha256": "dc1421bd3dfe2fab6baba317744d3e02221a38dece3210f56e7c4088a5134613",
   "rows": 6000,
   "duplicates_removed": 0,
-  "recommended": "Linear SVM",
+  "recommended": "Gradient Boosting",
   "config": {
     "retained": 0.95,
     "split": "stratified",
     "policy": "f1",
     "target_recall": 0.8,
-    "seed": 61
+    "seed": 61,
+    "include_nonlinear": true
   },
   "split_sizes": [
     3600,
@@ -44,14 +45,16 @@
       "Time end": 119920.0
     }
   ],
-  "elapsed_seconds": 0.5901735419999999,
+  "elapsed_seconds": 1.107673959,
   "versions": {
     "python": "3.9.6",
     "numpy": "1.26.4",
     "pandas": "2.3.3",
     "scikit-learn": "1.6.1"
   },
-  "warnings": [],
+  "warnings": [
+    "Gradient Boosting: Could not find the number of physical cores for the following reason:\ninvalid literal for int() with base 10: ''\nReturning the number of logical cores instead. You can silence this warning by setting LOKY_MAX_CPU_COUNT to the number of cores you want to use."
+  ],
   "metrics": [
     {
       "Model": "Logistic Regression",
@@ -66,7 +69,7 @@
       "Missed fraud": 11,
       "Threshold": 2.2664218453919074,
       "Components": 30,
-      "Fit seconds": 0.012885166999999975
+      "Fit seconds": 0.015165541999999976
     },
     {
       "Model": "Linear SVM",
@@ -81,7 +84,7 @@
       "Missed fraud": 11,
       "Threshold": 0.6262434010477639,
       "Components": 30,
-      "Fit seconds": 0.01225233300000006
+      "Fit seconds": 0.014761916999999958
     },
     {
       "Model": "PCA + Logistic Regression",
@@ -96,7 +99,7 @@
       "Missed fraud": 16,
       "Threshold": 1.712641955757488,
       "Components": 21,
-      "Fit seconds": 0.354455667
+      "Fit seconds": 0.491794584
     },
     {
       "Model": "PCA + Linear SVM",
@@ -111,7 +114,139 @@
       "Missed fraud": 19,
       "Threshold": 0.6029465037664998,
       "Components": 21,
-      "Fit seconds": 0.021803165999999985
+      "Fit seconds": 0.032948832999999844
+    },
+    {
+      "Model": "Gradient Boosting",
+      "Validation AP": 0.8140749919774011,
+      "Precision": 0.8611111111111112,
+      "Recall": 0.7560975609756098,
+      "F1": 0.8051948051948052,
+      "ROC-AUC": 0.8792062122519414,
+      "Average precision": 0.7892704952972187,
+      "Flag rate": 0.03,
+      "False alarms": 5,
+      "Missed fraud": 10,
+      "Threshold": -0.06722309933978184,
+      "Components": 30,
+      "Fit seconds": 0.3528424579999998
     }
-  ]
+  ],
+  "test_rate_intervals": {
+    "Logistic Regression": [
+      {
+        "Metric": "Precision",
+        "Estimate": 0.9375,
+        "Lower 95%": 0.7985287685584542,
+        "Upper 95%": 0.982689432968359,
+        "Denominator": 32
+      },
+      {
+        "Metric": "Recall",
+        "Estimate": 0.7317073170731707,
+        "Lower 95%": 0.5806646689292336,
+        "Upper 95%": 0.8430503595218832,
+        "Denominator": 41
+      },
+      {
+        "Metric": "Review rate",
+        "Estimate": 0.02666666666666667,
+        "Lower 95%": 0.018951808170813895,
+        "Upper 95%": 0.03740233906644183,
+        "Denominator": 1200
+      }
+    ],
+    "Linear SVM": [
+      {
+        "Metric": "Precision",
+        "Estimate": 0.9090909090909091,
+        "Lower 95%": 0.7642739435353026,
+        "Upper 95%": 0.9685960584754184,
+        "Denominator": 33
+      },
+      {
+        "Metric": "Recall",
+        "Estimate": 0.7317073170731707,
+        "Lower 95%": 0.5806646689292336,
+        "Upper 95%": 0.8430503595218832,
+        "Denominator": 41
+      },
+      {
+        "Metric": "Review rate",
+        "Estimate": 0.0275,
+        "Lower 95%": 0.01964758615413982,
+        "Upper 95%": 0.038367909415444684,
+        "Denominator": 1200
+      }
+    ],
+    "PCA + Logistic Regression": [
+      {
+        "Metric": "Precision",
+        "Estimate": 0.7575757575757576,
+        "Lower 95%": 0.5897538017044264,
+        "Upper 95%": 0.8716828662282499,
+        "Denominator": 33
+      },
+      {
+        "Metric": "Recall",
+        "Estimate": 0.6097560975609756,
+        "Lower 95%": 0.45726856934123794,
+        "Upper 95%": 0.7434385493987647,
+        "Denominator": 41
+      },
+      {
+        "Metric": "Review rate",
+        "Estimate": 0.0275,
+        "Lower 95%": 0.01964758615413982,
+        "Upper 95%": 0.038367909415444684,
+        "Denominator": 1200
+      }
+    ],
+    "PCA + Linear SVM": [
+      {
+        "Metric": "Precision",
+        "Estimate": 0.7586206896551724,
+        "Lower 95%": 0.5789239838218867,
+        "Upper 95%": 0.8778157755747991,
+        "Denominator": 29
+      },
+      {
+        "Metric": "Recall",
+        "Estimate": 0.5365853658536586,
+        "Lower 95%": 0.38746471267669474,
+        "Upper 95%": 0.6794376602366394,
+        "Denominator": 41
+      },
+      {
+        "Metric": "Review rate",
+        "Estimate": 0.024166666666666666,
+        "Lower 95%": 0.016878365804020704,
+        "Upper 95%": 0.0344917364362487,
+        "Denominator": 1200
+      }
+    ],
+    "Gradient Boosting": [
+      {
+        "Metric": "Precision",
+        "Estimate": 0.8611111111111112,
+        "Lower 95%": 0.713404696106438,
+        "Upper 95%": 0.9391818499086717,
+        "Denominator": 36
+      },
+      {
+        "Metric": "Recall",
+        "Estimate": 0.7560975609756098,
+        "Lower 95%": 0.6065666377742431,
+        "Upper 95%": 0.8617499726190967,
+        "Denominator": 41
+      },
+      {
+        "Metric": "Review rate",
+        "Estimate": 0.03,
+        "Lower 95%": 0.02174746653277537,
+        "Upper 95%": 0.04125207403379545,
+        "Denominator": 1200
+      }
+    ]
+  }
 }

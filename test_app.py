@@ -56,6 +56,20 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(result['config']['policy'], 'recall')
         self.assertGreaterEqual(result['models'][result['best']]['validation_metrics']['Recall'], .9)
 
+    def test_boosting_review_and_optional_four_model_mode(self):
+        self.train()
+        self.assertEqual(len(self.app.session_state['result']['models']), 5)
+        self.widget('selectbox', 'Explore model').set_value('Gradient Boosting').run()
+        self.assert_clean()
+        self.widget('radio', 'Workspace').set_value('Transaction review').run()
+        self.widget('selectbox', 'Scoring model').set_value('Gradient Boosting').run()
+        self.widget('checkbox', 'Try 20 sample transactions').check().run()
+        self.assert_clean()
+        self.assertTrue(any('nonlinear trees' in info.value for info in self.app.info))
+        self.widget('checkbox', 'Include Gradient Boosting').uncheck()
+        self.train()
+        self.assertEqual(len(self.app.session_state['result']['models']), 4)
+
     def test_metadata_search_is_literal_and_preserves_user_row_column(self):
         self.train()
         self.widget('radio', 'Workspace').set_value('Transaction review').run()

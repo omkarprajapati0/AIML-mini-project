@@ -3,12 +3,13 @@
 Experiment 10 · AI/ML mini project\
 Omkar M Prajapati · Roll No. 61 · TE IT
 
-A local, interactive workspace for studying credit card fraud. Compare Logistic Regression and Linear SVM with and without PCA, choose a validation-based decision policy, inspect held-out results, and score a transaction batch for human review.
+A local, interactive workspace for studying credit card fraud. Compare Logistic Regression and Linear SVM with and without PCA, plus optional Gradient Boosting, choose a validation-based decision policy, inspect held-out results, and score a transaction batch for human review.
 
 ## What is included
 
 - **Overview:** data quality, class imbalance, transaction amount distributions, and sample CSV downloads.
-- **Model lab:** four comparable pipelines, confusion matrices, precision–recall curves, validation threshold tradeoffs, PCA variance, and feature coefficients.
+- **Model lab:** four linear/PCA baselines and an optional nonlinear tree ensemble, confusion matrices, precision–recall curves, validation threshold tradeoffs, PCA variance, and feature coefficients.
+- **Uncertainty:** approximate 95% Wilson intervals for held-out precision, recall and review rate, including explicit handling of undefined precision.
 - **Evaluation choices:** stratified random or chronological holdout, with F1, recall-focused F2, or a minimum validation recall target.
 - **Transaction review:** model selection, amount and decision filters, sorting, pagination, per-record inspection, and full or filtered CSV exports.
 - **Explain each prediction:** exact feature contributions that add up to the transaction score, including the baseline and any imputed fields.
@@ -85,6 +86,8 @@ Training requires at least **20 distinct rows of each class**. Exact duplicates 
 
 Batch scoring preserves row order, duplicates and extra columns. `Class` is ignored even if present. The output adds `Fraud_score`, `Predicted_class`, `Decision`, `Decision_threshold`, and `Scoring_model`. Input columns with those names are rejected to prevent accidental overwrites. Text metadata that could become spreadsheet formulas is escaped on CSV export; numeric values remain numeric.
 
+Exact feature contributions are available for the four linear/PCA pipelines. Gradient Boosting uses nonlinear trees and does not display linear attributions.
+
 Extra metadata columns are read as text so identifiers such as `000123` and literal values such as `NA` are preserved. In Transaction review, search across metadata columns and choose which fields to display alongside each prediction. Open **Inspect a transaction** to see the exact score decomposition and download all 30 feature contributions. Contributions are measured relative to zero standardized inputs; they explain this model’s arithmetic, not causal evidence of fraud.
 
 V1–V28 are required: a card number and amount alone are not sufficient inputs.
@@ -92,7 +95,7 @@ V1–V28 are required: a card number and amount alone are not sufficient inputs.
 ## Evaluation methodology
 
 1. **Separate the data.** Default: fixed-seed stratified 60/20/20 train/validation/test split. Chronological mode sorts by `Time`, trains on the earliest period, and holds out later periods. Equal timestamps never cross boundaries, so proportions can shift. Every partition must contain both classes.
-2. **Fit on training only.** Median imputation, standardization, optional PCA, and balanced-class Logistic Regression / Linear SVM all fit exclusively on training rows. No resampling occurs before splitting.
+2. **Fit on training only.** Median imputation, standardization, optional PCA, and balanced-class Logistic Regression / Linear SVM all fit exclusively on training rows. No resampling occurs before splitting. Optional histogram Gradient Boosting uses balanced class weights, 150 iterations, 15 leaves per tree, learning rate 0.07 and L2 regularization of 1. Its configuration is fixed in advance; it uses the same train/validation/test partitions and validation-only threshold selection. No test data is used for early stopping or fitting.
 3. **Choose the decision threshold on validation.**
    - `f1`: maximize validation F1 (default).
    - `f2`: maximize validation F2, giving recall more weight.
@@ -101,6 +104,10 @@ V1–V28 are required: a card number and amount alone are not sufficient inputs.
 4. **Select the model using validation average precision.** The recommendation never uses test metrics.
 5. **Report held-out test results.** Precision, recall, F1, ROC-AUC, average precision, review rate, false alarms, and missed fraud are measured using the frozen validation threshold.
 6. **Keep the original fitted pipeline.** No refit changes the preprocessing, model or decision threshold after evaluation.
+
+The dashboard includes Gradient Boosting by default; uncheck **Include Gradient Boosting** to reproduce the original four-model experiment. The CLI adds it with `--include-nonlinear`. It can learn nonlinear patterns, but improvement on any particular dataset is not guaranteed.
+
+Wilson intervals describe sampling uncertainty for a fixed model under independent-transaction assumptions. They do not measure uncertainty from training, model selection, repeated test inspection, or future distribution changes. Precision is reported as not estimable when there are no alerts. These ranges also appear in JSON and Markdown exports.
 
 Decision scores are uncalibrated margins, **not fraud probabilities**, and cannot be compared across different models. Feature weights represent associations in standardized input coordinates; PCA coefficients are mapped back to those coordinates. They do not establish causality. Kaggle V1–V28 are already PCA components, so additional PCA is an experiment, not a guaranteed improvement.
 
@@ -111,18 +118,18 @@ Repeatedly tuning configurations based on the test table biases the final result
 Train a synthetic experiment:
 
 ```bash
-python train.py --output outputs/demo-v2
+python train.py --output outputs/demo-v2 --include-nonlinear
 ```
 
 Train with real data and a chronological recall target:
 
 ```bash
-python train.py --csv data/creditcard.csv --output outputs/kaggle --split chronological --policy recall --target-recall 0.90 --retained 0.95
+python train.py --csv data/creditcard.csv --output outputs/kaggle --split chronological --policy recall --target-recall 0.90 --retained 0.95 --include-nonlinear
 ```
 
 Each run writes:
 
-- `metrics.csv`: all four models and their measured test results.
+- `metrics.csv`: all trained models and their measured test results.
 - `run.json`: source, UTC timestamp, normalized-dataset SHA-256, split audit, seed, policy, package versions, warnings, timing and metrics.
 - `report.md`: readable experiment summary, selected-model outcomes, comparison table, provenance and limitations.
 - `models.joblib`: fitted pipelines, thresholds, validation operating points and held-out labels/scores.
@@ -173,3 +180,6 @@ The app processes CSVs on the machine running Streamlit. It does not send transa
 - [Decision threshold selection](https://scikit-learn.org/stable/modules/classification_threshold.html)
 - [Model evaluation](https://scikit-learn.org/stable/model_selection.html)
 - [Streamlit app testing](https://docs.streamlit.io/develop/api-reference/app-testing)
+
+- [Histogram Gradient Boosting](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingClassifier.html)
+- [NIST: Wilson confidence intervals](https://www.itl.nist.gov/div898/handbook/prc/section2/prc241.htm)

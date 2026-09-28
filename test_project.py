@@ -17,7 +17,7 @@ from data_io import export_csv, read_csv
 from reporting import experiment_report
 from ml import (
     FEATURES, dataset_fingerprint, demo_data, explain_prediction, feature_weights, predict, run_metadata,
-    select_threshold, split_data, threshold_curve, train, validate,
+    operating_intervals, select_threshold, split_data, threshold_curve, train, validate,
 )
 
 ROOT = Path(__file__).parent
@@ -278,6 +278,36 @@ class ModelTests(unittest.TestCase):
             self.assertGreaterEqual(model['validation_metrics']['Recall'], .9)
         self.assertLess(result['split_summary'][0]['Time end'], result['split_summary'][1]['Time start'])
 
+    def test_boosting_uses_same_partitions_and_frozen_threshold(self):
+        result = train(self.df, include_nonlinear=True)
+        self.assertEqual(len(result['models']), 5)
+        self.assertEqual(result['sizes'], self.result['sizes'])
+        entry = result['models']['Gradient Boosting']
+        training, validation, test = split_data(self.df)
+        self.assertEqual(entry['pipeline'].named_steps['scale'].n_samples_seen_, len(training))
+        np.testing.assert_allclose(entry['pipeline'].named_steps['imputer'].statistics_, training[FEATURES].median())
+        self.assertEqual(entry['threshold'], select_threshold(entry['validation_curve']))
+        scored = predict(result, 'Gradient Boosting', self.df.head(5).assign(V1=np.nan))
+        self.assertTrue(np.isfinite(scored.Fraud_score).all())
+        with self.assertRaisesRegex(ValueError, 'unavailable'):
+            explain_prediction(result, 'Gradient Boosting', self.df.head(1))
+        # Altering the test set cannot change the tree or its validation threshold.
+        with patch('ml.split_data', return_value=(training, validation, test.assign(Class=1-test.Class))):
+            altered = train(self.df, include_nonlinear=True)
+        self.assertEqual(altered['best'], result['best'])
+        np.testing.assert_allclose(altered['models']['Gradient Boosting']['scores'], entry['scores'])
+        self.assertEqual(altered['models']['Gradient Boosting']['threshold'], entry['threshold'])
+
+    def test_wilson_intervals_handle_extreme_and_undefined_rates(self):
+        perfect = operating_intervals([[90, 0], [0, 10]])
+        self.assertAlmostEqual(perfect[0]['Lower 95%'], .7224672001371107)
+        self.assertAlmostEqual(perfect[0]['Upper 95%'], 1.)
+        empty = operating_intervals([[90, 0], [10, 0]])
+        self.assertIsNone(empty[0]['Estimate'])
+        self.assertIsNone(empty[0]['Lower 95%'])
+        self.assertAlmostEqual(empty[1]['Upper 95%'], .2775327998628892)
+        json.dumps(empty, allow_nan=False)
+
 
 class CommandLineTests(unittest.TestCase):
     def test_train_and_predict_roundtrip_and_overwrite_protection(self):
@@ -290,7 +320,7 @@ class CommandLineTests(unittest.TestCase):
             data = demo_data(2000)
             data.to_csv(csv, index=False)
             data[FEATURES].head(13).to_csv(batch, index=False)
-            args = [sys.executable, str(ROOT / 'train.py'), '--csv', str(csv), '--output', str(out)]
+            args = [sys.executable, str(ROOT / 'train.py'), '--csv', str(csv), '--output', str(out), '--include-nonlinear']
             trained = subprocess.run(args, capture_output=True, text=True)
             self.assertEqual(trained.returncode, 0, trained.stderr)
             self.assertEqual(subprocess.run(args, capture_output=True).returncode, 2)

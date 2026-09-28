@@ -18,6 +18,7 @@ def main(argv=None):
     parser.add_argument('--policy', choices=POLICIES, default='f1')
     parser.add_argument('--target-recall', type=float, default=.8)
     parser.add_argument('--retained', type=float, default=.95, help='PCA variance fraction between 0 and 1.')
+    parser.add_argument('--include-nonlinear', action='store_true', help='Also compare Gradient Boosting on the same partitions.')
     parser.add_argument('--overwrite', action='store_true', help='Replace an existing experiment in the output folder.')
     args = parser.parse_args(argv)
     paths = [args.output / name for name in ('metrics.csv', 'models.joblib', 'run.json', 'report.md')]
@@ -25,7 +26,7 @@ def main(argv=None):
         parser.error('Output already contains an experiment. Choose a new folder or pass --overwrite.')
     try:
         data = read_csv(args.csv) if args.csv else demo_data()
-        result = train(data, retained=args.retained, split=args.split, policy=args.policy, target_recall=args.target_recall)
+        result = train(data, retained=args.retained, split=args.split, policy=args.policy, target_recall=args.target_recall, include_nonlinear=args.include_nonlinear)
         manifest = run_metadata(result, str(args.csv) if args.csv else 'SYNTHETIC DEMO')
         args.output.mkdir(parents=True, exist_ok=True)
         (args.output / 'metrics.csv').write_text(export_csv(result['metrics']), encoding='utf-8')
