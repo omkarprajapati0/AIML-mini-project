@@ -8,6 +8,7 @@ font = "sans serif"
 
 [server]
 maxUploadSize = 250
+fileWatcherType = "poll"
 
 [browser]
 gatherUsageStats = false
