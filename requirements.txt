@@ -1,0 +1,8 @@
+streamlit>=1.50,<2
+pandas>=2.2,<3
+numpy>=1.26,<3; python_version >= "3.10" or platform_system != "Darwin"
+# Avoid the Accelerate warning bug on older Python / Apple Silicon environments.
+numpy==1.26.4; python_version < "3.10" and platform_system == "Darwin"
+scikit-learn>=1.5,<2
+matplotlib>=3.8,<4
+joblib>=1.4,<2

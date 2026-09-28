@@ -1,0 +1,117 @@
+{
+  "artifact_version": 2,
+  "source": "SYNTHETIC DEMO",
+  "created_at": "2026-09-27T19:35:03.498125+00:00",
+  "dataset_sha256": "dc1421bd3dfe2fab6baba317744d3e02221a38dece3210f56e7c4088a5134613",
+  "rows": 6000,
+  "duplicates_removed": 0,
+  "recommended": "Linear SVM",
+  "config": {
+    "retained": 0.95,
+    "split": "stratified",
+    "policy": "f1",
+    "target_recall": 0.8,
+    "seed": 61
+  },
+  "split_sizes": [
+    3600,
+    1200,
+    1200
+  ],
+  "splits": [
+    {
+      "Split": "Train",
+      "Rows": 3600,
+      "Fraud": 122,
+      "Prevalence": 0.03388888888888889,
+      "Time start": 40.0,
+      "Time end": 119980.0
+    },
+    {
+      "Split": "Validation",
+      "Rows": 1200,
+      "Fraud": 41,
+      "Prevalence": 0.034166666666666665,
+      "Time start": 0.0,
+      "Time end": 119880.0
+    },
+    {
+      "Split": "Test",
+      "Rows": 1200,
+      "Fraud": 41,
+      "Prevalence": 0.034166666666666665,
+      "Time start": 20.0,
+      "Time end": 119920.0
+    }
+  ],
+  "elapsed_seconds": 0.5901735419999999,
+  "versions": {
+    "python": "3.9.6",
+    "numpy": "1.26.4",
+    "pandas": "2.3.3",
+    "scikit-learn": "1.6.1"
+  },
+  "warnings": [],
+  "metrics": [
+    {
+      "Model": "Logistic Regression",
+      "Validation AP": 0.7529308131982239,
+      "Precision": 0.9375,
+      "Recall": 0.7317073170731707,
+      "F1": 0.821917808219178,
+      "ROC-AUC": 0.8720090911004018,
+      "Average precision": 0.762485558910505,
+      "Flag rate": 0.02666666666666667,
+      "False alarms": 2,
+      "Missed fraud": 11,
+      "Threshold": 2.2664218453919074,
+      "Components": 30,
+      "Fit seconds": 0.012885166999999975
+    },
+    {
+      "Model": "Linear SVM",
+      "Validation AP": 0.7593800572043581,
+      "Precision": 0.9090909090909091,
+      "Recall": 0.7317073170731707,
+      "F1": 0.8108108108108109,
+      "ROC-AUC": 0.873419053431259,
+      "Average precision": 0.7668108304054554,
+      "Flag rate": 0.0275,
+      "False alarms": 3,
+      "Missed fraud": 11,
+      "Threshold": 0.6262434010477639,
+      "Components": 30,
+      "Fit seconds": 0.01225233300000006
+    },
+    {
+      "Model": "PCA + Logistic Regression",
+      "Validation AP": 0.6717997303702357,
+      "Precision": 0.7575757575757576,
+      "Recall": 0.6097560975609756,
+      "F1": 0.6756756756756757,
+      "ROC-AUC": 0.8758812264567857,
+      "Average precision": 0.6168080852887172,
+      "Flag rate": 0.0275,
+      "False alarms": 8,
+      "Missed fraud": 16,
+      "Threshold": 1.712641955757488,
+      "Components": 21,
+      "Fit seconds": 0.354455667
+    },
+    {
+      "Model": "PCA + Linear SVM",
+      "Validation AP": 0.6704285869345593,
+      "Precision": 0.7586206896551724,
+      "Recall": 0.5365853658536586,
+      "F1": 0.6285714285714286,
+      "ROC-AUC": 0.8761548012373997,
+      "Average precision": 0.6133974251307863,
+      "Flag rate": 0.024166666666666666,
+      "False alarms": 7,
+      "Missed fraud": 19,
+      "Threshold": 0.6029465037664998,
+      "Components": 21,
+      "Fit seconds": 0.021803165999999985
+    }
+  ]
+}
