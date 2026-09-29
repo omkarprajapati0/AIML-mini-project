@@ -1,0 +1,125 @@
+from pathlib import Path
+from xml.sax.saxutils import escape
+import csv
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT
+ROOT=Path.cwd()
+OUT=ROOT/'output/pdf/FraudLens_Project_Explanation_Report.pdf'
+styles=getSampleStyleSheet()
+styles.add(ParagraphStyle(name='Body',fontName='Helvetica',fontSize=10.5,leading=15,spaceAfter=9,textColor=colors.HexColor('#202b36')))
+styles.add(ParagraphStyle(name='SmallText',parent=styles['Body'],fontSize=9,leading=12,spaceAfter=6))
+styles['Title'].fontName='Helvetica-Bold'; styles['Title'].fontSize=26; styles['Title'].leading=31; styles['Title'].alignment=TA_LEFT; styles['Title'].textColor=colors.black
+for name in ['Heading1','Heading2']:
+    styles[name].textColor=colors.black
+styles['Heading1'].fontSize=19;styles['Heading1'].leading=24
+styles['Heading2'].fontSize=12;styles['Heading2'].leading=16;styles['Heading2'].spaceBefore=10
+story=[]
+md=[]
+def p(t,style='Body'):
+    story.append(Paragraph(t,styles[style]));md.append(t.replace('<b>','').replace('</b>',''))
+def h(t): p(t,'Heading2')
+def page(t):
+    if story:story.append(PageBreak())
+    p(t,'Heading1');md.append('')
+def table(rows,widths):
+    rows=[[Paragraph(escape(str(c)),styles['SmallText']) for c in row] for row in rows]
+    t=Table(rows,colWidths=widths,hAlign='LEFT',repeatRows=1)
+    t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#e9eef2')),('VALIGN',(0,0),(-1,-1),'TOP'),('GRID',(0,0),(-1,-1),.4,colors.HexColor('#d9d9d9')),('LEFTPADDING',(0,0),(-1,-1),8),('RIGHTPADDING',(0,0),(-1,-1),8),('TOPPADDING',(0,0),(-1,-1),7),('BOTTOMPADDING',(0,0),(-1,-1),5)]))
+    story.append(t);story.append(Spacer(1,9))
+    for row in rows:md.append(' | '.join(c.getPlainText() for c in row))
+p('Credit Card Fraud Detection','Title')
+p('FraudLens project explanation report','Heading2')
+p('Omkar M Prajapati | Roll No. 61 | TE IT | Experiment 10')
+p('Prepared for presentation and viva | 29 September 2026','SmallText')
+h('Start with this one minute explanation')
+p('My project is FraudLens, a machine learning application that identifies suspicious credit card transactions for review. Fraud is uncommon, so simply reporting high accuracy can be misleading. The project focuses on precision, recall and average precision to measure how well it finds fraud.')
+p('The application accepts transaction data, validates it, handles missing values and compares Logistic Regression, Linear SVM, their PCA versions, and Gradient Boosting. It separates the data into training, validation and test sets. Training teaches the models, validation chooses the model and decision threshold, and the test set measures the final performance.')
+p('In the saved synthetic demo, the selected Gradient Boosting model found 31 of 41 fraudulent test transactions. It flagged 36 transactions in total, including 5 false alarms. The Streamlit dashboard lets us compare models, review transactions and export results. These are demonstration results, so real banking accuracy still needs evaluation on representative unseen data.')
+h('Remember these five facts')
+table([['Item','What to say'],['Problem','Find rare fraudulent transactions while controlling false alarms.'],['Input','30 numeric features; a Class label is needed for training.'],['Method','Supervised binary classification with five model pipelines.'],['Evaluation','60% training, 20% validation, 20% held-out testing.'],['Demo result','86.11% precision, 75.61% recall and 36 alerts out of 1,200 test rows.']],[95,410])
+p('How to use this report: read page 1 aloud, use pages 2-4 to explain the technical work, follow page 5 during the demonstration, and revise pages 6-7 for questions.','SmallText')
+page('Problem and data')
+h('Problem statement')
+p('Build an application that learns from labelled transaction examples and flags potentially fraudulent transactions. It should compare different models fairly and help a reviewer understand the results. A prediction is a review signal; it does not prove fraud.')
+h('Objectives')
+p('1. Validate transaction CSV files and prepare consistent model inputs.<br/>2. Compare linear models, PCA pipelines and a nonlinear model.<br/>3. Choose decision thresholds without using the test set.<br/>4. Show fraud detection quality and review workload.<br/>5. Support transaction inspection and downloadable experiment records.')
+h('Input fields')
+table([['Field','Meaning'],['Time','Elapsed transaction time in the dataset; also supports time-based splitting.'],['V1 to V28','Anonymized numeric features. In the original Kaggle dataset these are PCA-derived components; their original business meanings are unavailable.'],['Amount','Transaction amount in the dataset units.'],['Class','Training target: 0 means genuine; 1 means fraud. Excluded from prediction inputs.'],['Extra columns','Optional metadata such as transaction IDs; preserved for review and ignored by the models.']],[100,405])
+p('There are 30 input features: Time + 28 V columns + Amount. Class is the target, not an input feature. A card number and amount alone are insufficient for this model.')
+h('Which data produced the reported results')
+p('The saved experiment uses 6,000 synthetic transactions: 5,796 genuine and 204 fraudulent (3.4% fraud). It is reproducible demonstration data. The real Kaggle dataset is not bundled and was not used for these reported numbers.')
+h('Data quality checks')
+p('The app checks required columns, numeric values and valid labels. Negative Time or Amount and infinite values are rejected. Exact duplicate labelled rows are removed before splitting; identical features with contradictory labels are rejected. Missing feature values use medians learned from the training partition. A training feature with no observed values is rejected.')
+page('Workflow and algorithms')
+p('<b>CSV input → validation → data split → fitted preprocessing → model training → validation selection → test evaluation → transaction review</b>'.replace('→','&gt;'))
+h('Three separate jobs for three partitions')
+table([['Partition','Demo rows','Purpose'],['Training 60%','3,600','Learn medians, scaling, PCA and model parameters.'],['Validation 20%','1,200','Choose thresholds and recommend the model.'],['Test 20%','1,200','Measure held-out performance after decisions are frozen.']],[105,70,330])
+p('The default split is stratified with random seed 61, keeping class proportions similar. An optional chronological split trains on earlier transactions and evaluates later ones. Equal timestamps stay in one partition.')
+h('Preprocessing without data leakage')
+p('Median imputation fills missing feature values. StandardScaler puts features on comparable scales. PCA, when enabled, compresses the scaled features. All these transformations are fitted on training rows only, then applied unchanged to validation, test and new transactions. Learning them from the full dataset would leak information into evaluation.')
+h('The five pipelines in simple words')
+table([['Model','Easy explanation'],['Logistic Regression','Learns a weighted combination of features to separate fraud from genuine transactions. It is a transparent linear baseline.'],['Linear SVM','Finds a separating boundary with a large margin between classes. Its decision score indicates which side a transaction falls on.'],['PCA + Logistic Regression','Compresses the feature space before fitting Logistic Regression.'],['PCA + Linear SVM','Uses the same compression before fitting the SVM.'],['Gradient Boosting','Builds a sequence of decision trees that improve earlier predictions and capture nonlinear feature interactions.']],[155,350])
+p('PCA is dimensionality reduction, not a classifier. The demo retains 95% of training variance and uses 21 components. Balanced class weights make minority fraud examples matter more during training; the project does not use SMOTE.')
+h('Choosing an operating point')
+p('Each model gets a threshold selected on validation data: maximize F1, maximize recall-focused F2, or meet a minimum recall target with the best available precision. The recommended model has the highest validation average precision. Test metrics do not choose the model. Reported decision scores are margins, not calibrated probabilities.')
+page('Measured demo results')
+p('Source: saved outputs/demo/metrics.csv and outputs/demo/run.json. Settings: synthetic data, stratified split, seed 61, F1 threshold policy, 95% PCA variance, Gradient Boosting enabled. Different dashboard settings can produce different results.','SmallText')
+rows=[['Model','Val AP','Test AP','Precision','Recall','F1']]
+for r in csv.DictReader(open(ROOT/'outputs/demo/metrics.csv')):
+    rows.append([r['Model']]+[f'{float(r[k])*100:.2f}%' for k in ['Validation AP','Average precision','Precision','Recall','F1']])
+table(rows,[150,68,68,73,73,73])
+p('<b>Recommended model: Gradient Boosting.</b> It has the highest validation AP (81.41%). Logistic Regression has higher test precision and F1 in this run, which shows that no model wins every metric. Choosing by test results after seeing them would weaken the held-out comparison.')
+h('Explain the confusion matrix using actual counts')
+table([['Actual test class','Predicted genuine','Flagged as fraud'],['Genuine: 1,159','1,154 true negatives','5 false positives'],['Fraud: 41','10 false negatives','31 true positives']],[169,168,168])
+p('Out of 1,200 test transactions, the model raised 36 alerts. Of these, 31 were fraud and 5 were genuine. It caught 31 of the 41 frauds and missed 10.')
+h('Metrics you should be able to explain')
+p('<b>Precision = TP / (TP + FP)</b> = 31 / 36 = <b>86.11%</b>. Of all alerts, how many were actually fraud?<br/><b>Recall = TP / (TP + FN)</b> = 31 / 41 = <b>75.61%</b>. Of all actual frauds, how many did we catch?<br/><b>F1 = 2 x precision x recall / (precision + recall)</b> = <b>80.52%</b>. It balances precision and recall.<br/><b>Review rate</b> = 36 / 1,200 = <b>3.00%</b>. It measures the review workload.')
+p('<b>Average precision (AP)</b> summarizes precision across recall levels as the score threshold changes. Test AP is <b>78.93%</b>; this is not accuracy. ROC-AUC is <b>0.8792</b>, a ranking measure across thresholds.')
+p('Accuracy is 98.75%, but predicting every test transaction as genuine would already reach 96.58% accuracy while detecting zero fraud. This is why accuracy alone is insufficient.')
+p('Approximate 95% intervals: precision 71.34%-93.92%; recall 60.66%-86.17%. Only 41 frauds are in the test set, so estimates have substantial uncertainty. These intervals do not cover model-selection uncertainty or future data drift.','SmallText')
+page('Demonstrate the application')
+p('Use this sequence for a three to five minute demonstration. Match the settings below before quoting the saved report numbers.')
+h('1 Open the project')
+p('From the project folder, run:','SmallText')
+p('<font face="Courier">.venv/bin/python -m streamlit run app.py</font>','SmallText')
+p('Open http://localhost:8501. Select <b>Explore demo</b>. In the sidebar use the stratified split, F1 decision policy, PCA variance 0.95 and Include Gradient Boosting enabled. Click <b>Train all models</b>.')
+h('2 Explain Overview')
+p('<b>Say:</b> "This screen shows the dataset and its class imbalance. Fraud makes up only 3.4% of the synthetic demo. This imbalance is why we evaluate precision and recall, instead of relying on accuracy alone."')
+h('3 Explain Model lab')
+p('<b>Say:</b> "These five pipelines use the same partitions. Thresholds are chosen on validation data and results are measured on the held-out test set. Gradient Boosting is recommended because it has the highest validation average precision."')
+p('Select Gradient Boosting. Show the comparison table, confusion matrix and precision-recall curve. Explain the 31 caught frauds, 10 missed frauds and 5 false alarms. Point out that the PCA pipelines performed worse in this experiment; fewer features do not automatically mean better fraud detection.')
+h('4 Explain Transaction review')
+p('Open <b>Transaction review</b> and enable <b>Try 20 sample transactions</b>. Show model selection, the Flagged filter, amount filtering, sorting and CSV export.')
+p('<b>Say:</b> "The model scores transactions and builds a review queue. A score above the selected threshold becomes an alert. The sample batch demonstrates the interface; it is not a new independent accuracy test."')
+h('5 Show prediction explanations')
+p('Select Logistic Regression or Linear SVM, then inspect a transaction. Explain that the baseline plus individual feature contributions equals the model score. Positive contributions increase the score; negative ones reduce it. These are model calculations, not proof of a real-world cause. Linear contribution explanations also work for the PCA pipelines; they are not available for Gradient Boosting.')
+h('6 Finish with reproducibility and limits')
+p('Show comparison CSV, experiment JSON and experiment report downloads in Model lab. Explain that the saved settings, dataset fingerprint and package versions help reproduce a run.')
+p('<b>Closing sentence:</b> "The project combines careful evaluation with a practical review interface. The next step is testing representative real transaction data over time and measuring the cost of false alarms and missed fraud."')
+page('Viva questions and short answers')
+qas=[('What type of machine learning is this?','Supervised binary classification. Training examples include a known Class label: genuine or fraud. Although the academic topic mentions anomaly detection, this implementation is not an unsupervised anomaly detector.'),('Why is fraud detection difficult?','Fraud is rare, patterns can change over time, and both missed fraud and false alarms have costs.'),('Why not use accuracy alone?','A model can call almost everything genuine and obtain high accuracy. Precision and recall show whether it actually finds fraud.'),('What is the difference between precision and recall?','Precision asks whether alerts are correct. Recall asks how much of the actual fraud was caught.'),('Why do you need a validation set?','It supports model and threshold decisions while keeping the test set reserved for evaluation.'),('What is data leakage?','It is using information during training or selection that would not be available for a new prediction. This project fits preprocessing only on training rows and does not tune thresholds on test rows.'),('Why use PCA if V1 to V28 already come from PCA?','The additional PCA is an experimental compression step over the full scaled input space. It lets us compare retained variance and detection quality. It did not improve AP in this saved demo.'),('Why was Gradient Boosting selected when Logistic Regression has higher F1?','Selection uses validation average precision, not test F1. The selection rule is fixed before examining held-out results.'),('What happens when the threshold is lowered?','Usually more transactions are flagged: recall tends to rise, the review workload increases, and precision may fall. The exact tradeoff depends on the data.'),('What is F2 used for?','F2 gives recall more weight than precision. It is useful when missing fraud matters more, but it may create more false alarms.'),('Is the score a probability of fraud?','No. The exported score is a decision margin and is not a calibrated probability. Scores should not be compared directly across different models.'),('Can the project guarantee perfect detection?','No. The demo missed 10 of 41 frauds. Its synthetic results do not establish future performance on real transactions.')]
+for q,a in qas:
+    h(q);p(a,'SmallText')
+page('Implementation and honest conclusions')
+h('Technology and project files')
+table([['File or tool','Role'],['Python and scikit-learn','Data preparation, pipelines, models and evaluation.'],['Streamlit and Matplotlib','Interactive dashboard and charts.'],['Pandas and NumPy','Dataframes and numerical operations.'],['app.py and ui.py','Dashboard flow, controls and presentation.'],['ml.py','Validation, splitting, training, prediction and explanations.'],['data_io.py','CSV import and safe export handling.'],['reporting.py','Readable experiment report generation.'],['train.py and predict.py','Command-line training and batch scoring.'],['test_project.py and test_app.py','Checks for the model workflow, inputs and dashboard behavior.']],[155,350])
+h('What is already implemented')
+p('Five model pipelines, optional time-based evaluation, validation threshold policies, train-only preprocessing, data checks, held-out metrics, uncertainty intervals, batch review, metadata search, linear prediction explanations, CSV exports and reproducible experiment manifests. The latest recorded test run passed 40 automated tests; software tests do not prove real-world detection accuracy.')
+h('Limitations to explain clearly')
+p('The reported dataset is synthetic. The small fraud test count limits certainty. Anonymized features limit business interpretation. Scores are uncalibrated and thresholds may not transfer to changing data. The app is a local study and review tool; it has not demonstrated real-time banking integration or production fraud prevention. The selected nonlinear model does not have the linear contribution explanation provided for the four baseline pipelines.')
+h('Future improvements')
+p('Evaluate representative, properly authorized real data; use time-based backtesting; assess financial costs and reviewer capacity; study probability calibration; monitor drift; and add suitable tree explanations. These are future steps, not claims about completed features.')
+h('Conclusion to read aloud')
+p('FraudLens demonstrates a complete fraud classification workflow, from validated data to measurable results and transaction review. Its main strength is transparent comparison: it shows the tradeoff between catching fraud and creating false alarms, while keeping validation decisions separate from test evaluation.')
+h('Evidence used for this report')
+p('Local project sources: README.md, app.py, ml.py, data_io.py and reporting.py. Numeric results: outputs/demo/metrics.csv and outputs/demo/run.json, saved 28 September 2026 UTC. Project repository: https://github.com/omkarprajapati0/AIML-mini-project. No real-data performance is claimed.','SmallText')
+def footer(c,doc):
+    c.setFont('Helvetica',8);c.setFillColor(colors.HexColor('#657381'))
+    c.drawString(45,28,'FraudLens | Project explanation | Synthetic demo results')
+    c.drawRightString(550,28,str(doc.page))
+doc=SimpleDocTemplate(str(OUT),pagesize=(595.28,841.89),rightMargin=45,leftMargin=45,topMargin=42,bottomMargin=45,title='FraudLens Project Explanation Report',author='Omkar M Prajapati')
+doc.build(story,onFirstPage=footer,onLaterPages=footer)
+(ROOT/'output/pdf/FraudLens_Explanation_Notes.md').write_text('\n\n'.join(md))
+print(OUT)
